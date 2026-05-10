@@ -10,17 +10,15 @@ def translate_to_albanian(text):
         if not text or len(text) < 3:
             return text
         
-        # 1. 强力清洗：在翻译前切掉 Google 原始结果末尾的省略号
-        # Google 的截断通常以 '...' 结尾，直接分割取第一段
+        # 1. Pastrimi i tekstit (Heqja e pikave ...)
         clean_input = text.split('...')[0].strip()
         
-        # 2. 翻译引擎：强制转为阿尔巴尼亚语 (sq)
+        # 2. Përkthimi në Shqip (sq)
         translated = GoogleTranslator(source='auto', target='sq').translate(clean_input)
         
-        # 3. 再次清洗：翻译引擎偶尔会乱加点号，这里做最后过滤
+        # 3. Pastrimi final
         return translated.strip().rstrip('.')
     except Exception:
-        # 如果翻译库崩溃，至少返回切掉省略号的原文
         return text.split('...')[0].strip()
 
 def run_task():
@@ -31,7 +29,7 @@ def run_task():
     
     context = ssl._create_unverified_context()
     
-    # 你的核心搜索逻辑：涵盖手工啤、Live Music、TripAdvisor评论、地图及活动
+    # Konfigurimi i kërkimeve
     queries = [
         {"engine": "google", "q": 'Tirana "birrë artizanale" OR "muzikë live" OR "oferta speciale"'},
         {"engine": "google", "q": 'Tirana "craft beer" reviews site:tripadvisor.com'},
@@ -40,7 +38,6 @@ def run_task():
         {"engine": "google_events", "q": "concerts and festivals in Tirana 2026"}
     ]
     
-    # 【强制新标题】：如果你在 Telegram 看到这个标题，说明覆盖成功了
     report = "📊 *RAPORTI I RI: MONITORIMI I TIRANËS*\n"
     report += "_Versioni i përditësuar me pastrim automatik_\n"
     report += "--------------------------------\n\n"
@@ -50,17 +47,16 @@ def run_task():
         url = f"https://serpapi.com/search.json?engine={task['engine']}&q={encoded_q}&api_key={api_key}"
         
         try:
-            with urllib.request.urlopen(url, context=context) as response:
+            # 增加 timeout 防止 GitHub Actions 线程卡死
+            with urllib.request.urlopen(url, context=context, timeout=20) as response:
                 data = json.loads(response.read().decode('utf-8'))
                 
-                # 分类处理结果
                 if task['engine'] == "google":
                     report += "📍 *Web dhe Media Sociale*\n"
                     if "organic_results" in data:
                         for item in data.get("organic_results", [])[:3]:
                             title = item.get('title', '').strip()
                             snippet = item.get('snippet', '').strip()
-                            # 拼接标题和内容进行整体翻译
                             full_info = f"{title}: {snippet}" if title not in snippet else snippet
                             report += f"• {translate_to_albanian(full_info[:220])}\n"
                 
@@ -70,7 +66,6 @@ def run_task():
                         for place in data.get("local_results", [])[:3]:
                             name = place.get('title', '')
                             rating = place.get('rating', 'N/A')
-                            # 地点名称通常不翻译以保持准确
                             report += f"• *{name}* (Vlerësimi: {rating}⭐)\n"
                 
                 else: # Events
@@ -92,17 +87,12 @@ def run_task():
     tg_url = f"https://api.telegram.org/bot{tg_token}/sendMessage?chat_id={tg_chat_id}&text={encoded_text}&parse_mode=Markdown"
     
     try:
-        # Timeout për dërgimin në Telegram
-        urllib.request.urlopen(tg_url, context=context, timeout=15)
-    except:
-        pass
-        
-    try:
-        urllib.request.urlopen(tg_url, context=context)
-        # 这里的日志能让你在 Actions 历史里一眼看出是不是新代码
-        print("VERIFIKIMI: Kodi i ri v3.0 u ekzekutua!") 
+        # 合并为一个请求，并增加超时和执行确认打印
+        with urllib.request.urlopen(tg_url, context=context, timeout=15) as tg_res:
+            if tg_res.getcode() == 200:
+                print("VERIFIKIMI: Kodi u ekzekutua dhe mesazhi u dërgua!")
     except Exception as e:
-        print(f"Gabim: {e}")
+        print(f"Gabim gjatë dërgimit: {e}")
 
 if __name__ == "__main__":
     run_task()
