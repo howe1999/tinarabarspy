@@ -92,6 +92,12 @@ def run_task():
     tg_url = f"https://api.telegram.org/bot{tg_token}/sendMessage?chat_id={tg_chat_id}&text={encoded_text}&parse_mode=Markdown"
     
     try:
+        # Timeout për dërgimin në Telegram
+        urllib.request.urlopen(tg_url, context=context, timeout=15)
+    except:
+        pass
+        
+    try:
         urllib.request.urlopen(tg_url, context=context)
         # 这里的日志能让你在 Actions 历史里一眼看出是不是新代码
         print("VERIFIKIMI: Kodi i ri v3.0 u ekzekutua!") 
