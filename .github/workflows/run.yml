@@ -3,7 +3,7 @@ name: Daily Tirana Bar Report
 on:
   schedule:
     # 每天早上 08:00 自动运行 (UTC 时间)
-    - cron: '0 8 * * *'
+    - cron: '15 8 * * *'
   # 允许你在 Actions 页面手动点击按钮运行
   workflow_dispatch:
 
