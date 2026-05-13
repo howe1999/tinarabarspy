@@ -1,35 +1,22 @@
-import urllib.request, urllib.parse, json, ssl, os
+import urllib.request, urllib.parse, json, ssl, os, random
 from deep_translator import GoogleTranslator
 
 def translate_to_albanian(text):
-    """
-    Sistemi i përkthimit automatik:
-    Përkthehet në Shqip dhe pastrohen pikat e tepërta.
-    """
     try:
         if not text or len(text) < 3:
             return text
-        
-        # 1. Pastrimi i tekstit (Heqja e pikave ...)
         clean_input = text.split('...')[0].strip()
-        
-        # 2. Përkthimi në Shqip (sq)
         translated = GoogleTranslator(source='auto', target='sq').translate(clean_input)
-        
-        # 3. Pastrimi final
         return translated.strip().rstrip('.')
     except Exception:
         return text.split('...')[0].strip()
 
 def run_task():
-    # Leximi i fshehtësive nga GitHub Secrets
     api_key = os.getenv("SERP_KEY")
     tg_token = os.getenv("TG_TOKEN")
     tg_chat_id = os.getenv("TG_CHAT_ID")
-    
     context = ssl._create_unverified_context()
     
-    # Konfigurimi i kërkimeve
     queries = [
         {"engine": "google", "q": 'Tirana "birrë artizanale" OR "muzikë live" OR "oferta speciale"'},
         {"engine": "google", "q": 'Tirana "craft beer" reviews site:tripadvisor.com'},
@@ -38,61 +25,67 @@ def run_task():
         {"engine": "google_events", "q": "concerts and festivals in Tirana 2026"}
     ]
     
-    report = "📊 *RAPORTI I RI: MONITORIMI I TIRANËS*\n"
-    report += "_Versioni i përditësuar me pastrim automatik_\n"
-    report += "--------------------------------\n\n"
+    # 使用字典暂存结果，方便最后统一格式化
+    data_groups = {"web": [], "maps": [], "events": []}
     
     for task in queries:
         encoded_q = urllib.parse.quote(task['q'])
         url = f"https://serpapi.com/search.json?engine={task['engine']}&q={encoded_q}&api_key={api_key}"
-        
         try:
-            # 增加 timeout 防止 GitHub Actions 线程卡死
             with urllib.request.urlopen(url, context=context, timeout=20) as response:
                 data = json.loads(response.read().decode('utf-8'))
                 
                 if task['engine'] == "google":
-                    report += "📍 *Web dhe Media Sociale*\n"
-                    if "organic_results" in data:
-                        for item in data.get("organic_results", [])[:3]:
-                            title = item.get('title', '').strip()
-                            snippet = item.get('snippet', '').strip()
-                            full_info = f"{title}: {snippet}" if title not in snippet else snippet
-                            report += f"• {translate_to_albanian(full_info[:220])}\n"
+                    for item in data.get("organic_results", [])[:3]:
+                        title = item.get('title', '').strip()
+                        snippet = item.get('snippet', '').strip()
+                        if not title: continue
+                        full_info = f"{title}: {snippet}" if title not in snippet else snippet
+                        data_groups["web"].append(f"• {translate_to_albanian(full_info[:220])}")
                 
                 elif task['engine'] == "google_maps":
-                    report += "📍 *Statusi i Konkurrencës (Maps)*\n"
-                    if "local_results" in data:
-                        for place in data.get("local_results", [])[:3]:
-                            name = place.get('title', '')
-                            rating = place.get('rating', 'N/A')
-                            report += f"• *{name}* (Vlerësimi: {rating}⭐)\n"
+                    for place in data.get("local_results", [])[:3]:
+                        name = place.get('title', '')
+                        rating = place.get('rating', 'N/A')
+                        data_groups["maps"].append(f"• *{name}* (Rating: {rating}⭐)")
                 
                 else: # Events
-                    report += "📍 *Ngjarjet dhe Festivalet*\n"
-                    if "events_results" in data:
-                        for event in data.get("events_results", [])[:3]:
-                            e_title = translate_to_albanian(event.get('title', ''))
-                            when = event.get('date', {}).get('when', 'N/A')
-                            report += f"• 📅 {e_title} ({when})\n"
-                
-                report += "\n"
-        except Exception:
+                    for event in data.get("events_results", [])[:3]:
+                        e_title = translate_to_albanian(event.get('title', ''))
+                        when = event.get('date', {}).get('when', 'N/A')
+                        data_groups["events"].append(f"• 📅 {e_title} ({when})")
+        except:
             continue
 
-    report += "📢 _Ky raport është përkthyer dhe pastruar automatikisht._"
+    # --- 组装最终报告 ---
+    greetings = ["Përshëndetje Boss!", "Mirëmëngjes!", "Raporti i ditës:"]
+    report = f"📊 *{random.choice(greetings)}*\n"
+    report += "--------------------------------\n\n"
+    
+    if data_groups["web"]:
+        report += "📍 *Lajmet dhe Media Sociale*\n"
+        # dict.fromkeys 用于快速去重
+        report += "\n".join(list(dict.fromkeys(data_groups["web"]))) + "\n\n"
+    
+    if data_groups["maps"]:
+        report += "📍 *Statusi i Konkurrencës*\n"
+        report += "\n".join(list(dict.fromkeys(data_groups["maps"]))) + "\n\n"
+        
+    if data_groups["events"]:
+        report += "📍 *Eventet në Tiranë*\n"
+        report += "\n".join(list(dict.fromkeys(data_groups["events"]))) + "\n\n"
 
-    # Dërgimi në Telegram
+    report += "📢 _Monitorimi automatik i Tiranës._"
+
+    # --- 发送逻辑 ---
     encoded_text = urllib.parse.quote(report)
     tg_url = f"https://api.telegram.org/bot{tg_token}/sendMessage?chat_id={tg_chat_id}&text={encoded_text}&parse_mode=Markdown"
-    
     try:
-        # 合并为一个请求，并增加超时和执行确认打印
         with urllib.request.urlopen(tg_url, context=context, timeout=15) as tg_res:
             if tg_res.getcode() == 200:
-                print("VERIFIKIMI: Kodi u ekzekutua dhe mesazhi u dërgua!")
+                print("Dërguar me sukses!")
     except Exception as e:
-        print(f"Gabim gjatë dërgimit: {e}")
+        print(f"Gabim: {e}")
 
 if __name__ == "__main__":
     run_task()
